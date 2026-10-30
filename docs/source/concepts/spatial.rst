@@ -1,8 +1,9 @@
-Spatial aggregations and masking
---------------------------------
+Spatial aggregations, masking and neighbourhood operators
+---------------------------------------------------------
 
 The :doc:`../autodocs/earthkit.transforms.spatial` module includes methods
-for aggregating data in space. This includes masking and aggregating data with geometries.
+for aggregating data in space. This includes masking and aggregating data with geometries,
+and neighbourhood operators on regular grids.
 
 To mask data you can use the :func:`mask` function. This function takes an xarray
 data object and a geometry object and returns the data object with the values
@@ -47,10 +48,32 @@ Providing both ``area`` and ``geodataframe`` raises a ``ValueError``.
    supported.
 
 
+Neighbourhood operators
+^^^^^^^^^^^^^^^^^^^^^^^
+
+To smooth data on a regular latitude/longitude grid you can use :func:`disk_mean`. For
+each grid cell it returns the mean of the defined values within a disk of a given radius,
+measured in grid cells. Missing values are left out of the mean.
+
+.. dropdown:: Show API documentation for ``disk_mean``
+
+   .. autofunction:: earthkit.transforms.spatial.disk_mean
+      :no-index:
+
+To fill missing (NaN) cells from their neighbours you can use :func:`fill_missing`. Each
+missing cell is replaced by a distance-weighted mean of the defined cells within a disk,
+provided that not too many of the cells in the disk are missing.
+
+.. dropdown:: Show API documentation for ``fill_missing``
+
+   .. autofunction:: earthkit.transforms.spatial.fill_missing
+      :no-index:
+
+
 Specifying the spatial variables
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The spatial methods (:func:`mask` and :func:`reduce`) operate over the latitude and
+The spatial methods (:func:`mask`, :func:`reduce`, :func:`disk_mean` and :func:`fill_missing`) operate over the latitude and
 longitude coordinates of the data object. By default these coordinates are detected
 automatically from the metadata of the data object, so in most cases you do not need to
 provide them explicitly. The detection looks, in order, for:
@@ -74,7 +97,7 @@ override it using the ``lat_key`` and ``lon_key`` keyword arguments:
         lon_key="x_coord",
     )
 
-Both ``lat_key`` and ``lon_key`` are accepted by :func:`mask` and :func:`reduce`. A worked
+Both ``lat_key`` and ``lon_key`` are accepted by :func:`mask`, :func:`reduce`, :func:`disk_mean` and :func:`fill_missing`. A worked
 example is available in the how-to guide
 :doc:`../how-tos/spatial/howto_specify_lat_lon_keys`.
 

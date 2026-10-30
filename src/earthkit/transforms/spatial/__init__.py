@@ -17,5 +17,6 @@ Typically this is done with an xarray representation of data and a geopandas rep
 """
 
 from ._aggregate import mask, reduce
+from ._neighbourhood import disk_mean, fill_missing
 
-__all__ = ["mask", "reduce"]
+__all__ = ["disk_mean", "fill_missing", "mask", "reduce"]
