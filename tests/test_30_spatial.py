@@ -1068,3 +1068,119 @@ def test_reduce_dataset_with_area():
     result = spatial.reduce(ds, area=area, how="mean")
     assert isinstance(result, xr.Dataset)
     assert "var" in result
+
+
+def test_disk_mean_constant_field():
+    field = np.full((7, 9), 3.5)
+    result = spatial.disk_mean(field, 2.0)
+    assert isinstance(result, np.ndarray)
+    np.testing.assert_array_equal(result, field)
+
+
+def test_disk_mean_spike_spreads_to_footprint():
+    field = np.zeros((11, 11))
+    field[5, 5] = 1.0
+    result = spatial.disk_mean(field, 2.0)
+    # disk of radius 2 holds 13 cells
+    yy, xx = np.mgrid[-5:6, -5:6]
+    footprint = (xx * xx + yy * yy) <= 4
+    np.testing.assert_allclose(result[footprint], 1.0 / 13)
+    np.testing.assert_array_equal(result[~footprint], 0.0)
+
+
+def test_disk_mean_skips_nan():
+    field = np.ones((5, 5))
+    field[2, 2] = np.nan
+    field[2, 3] = 4.0
+    result = spatial.disk_mean(field, 1.0)
+    assert np.isnan(result[2, 2])
+    # neighbours of (2, 3): (1, 3), (3, 3), (2, 4) are 1, (2, 2) is NaN
+    assert result[2, 3] == pytest.approx((4.0 + 3.0) / 4)
+
+
+def test_disk_mean_nan_edge_truncated():
+    field = np.full((4, 4), np.nan)
+    field[0, 0] = 2.0
+    field[0, 1] = 4.0
+    result = spatial.disk_mean(field, 1.0)
+    assert result[0, 0] == pytest.approx(3.0)
+    assert result[0, 1] == pytest.approx(3.0)
+    assert np.isnan(result[1, 0])
+
+
+def test_disk_mean_radius_zero_is_identity():
+    field = np.random.default_rng(2).normal(size=(4, 5))
+    np.testing.assert_array_equal(spatial.disk_mean(field, 0.0), field)
+
+
+def test_disk_mean_invalid_input():
+    with pytest.raises(ValueError, match="non-negative"):
+        spatial.disk_mean(np.ones((3, 3)), -1.0)
+    with pytest.raises(ValueError, match="2 dimensions"):
+        spatial.disk_mean(np.ones(3), 1.0)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_disk_mean_keeps_dtype(dtype):
+    field = np.random.default_rng(3).normal(size=(6, 6)).astype(dtype)
+    assert spatial.disk_mean(field, 1.5).dtype == dtype
+    da = xr.DataArray(field, dims=["lat", "lon"], coords={"lat": np.arange(6.0), "lon": np.arange(6.0)})
+    assert spatial.disk_mean(da, 1.5).dtype == dtype
+
+
+def test_disk_mean_integer_input_gives_float64():
+    assert spatial.disk_mean(np.ones((3, 3), dtype=np.int32), 1.0).dtype == np.float64
+
+
+def _disk_mean_dataarray(shape=(2, 6, 8), dims=("time", "lat", "lon")):
+    rng = np.random.default_rng(1)
+    coords = {"lat": np.arange(shape[-2], dtype=float), "lon": np.arange(shape[-1], dtype=float)}
+    return xr.DataArray(rng.normal(size=shape), dims=dims, coords=coords, attrs={"units": "K"})
+
+
+def test_disk_mean_dataarray():
+    da = _disk_mean_dataarray()
+    result = spatial.disk_mean(da, 1.5)
+    assert isinstance(result, xr.DataArray)
+    assert result.dims == da.dims
+    assert result.attrs == da.attrs
+    np.testing.assert_array_equal(result.values[1], spatial.disk_mean(da.values[1], 1.5))
+
+
+def test_disk_mean_dimension_order():
+    da = _disk_mean_dataarray()
+    result = spatial.disk_mean(da.transpose("lon", "time", "lat"), 1.5)
+    assert result.dims == ("lon", "time", "lat")
+    xr.testing.assert_allclose(result.transpose(*da.dims), spatial.disk_mean(da, 1.5))
+
+
+def test_disk_mean_dataset():
+    da = _disk_mean_dataarray()
+    ds = xr.Dataset({"a": da, "b": da * 2})
+    result = spatial.disk_mean(ds, 1.0, lat_key="lat", lon_key="lon")
+    assert isinstance(result, xr.Dataset)
+    xr.testing.assert_allclose(result["b"], spatial.disk_mean(da, 1.0) * 2)
+
+
+def test_disk_mean_custom_coordinate_names():
+    da = _disk_mean_dataarray().rename(lat="yy", lon="xx")
+    result = spatial.disk_mean(da, 1.0, lat_key="yy", lon_key="xx")
+    np.testing.assert_array_equal(result.values, spatial.disk_mean(da.values, 1.0))
+
+
+def test_disk_mean_dask_is_lazy_and_equal():
+    pytest.importorskip("dask")
+    da = _disk_mean_dataarray()
+    result = spatial.disk_mean(da.chunk({"time": 1, "lat": 3, "lon": 4}), 1.5)
+    assert result.chunks is not None
+    xr.testing.assert_allclose(result.compute(), spatial.disk_mean(da, 1.5))
+
+
+def test_disk_mean_irregular_grid_raises():
+    ds = xr.DataArray(
+        np.ones((3, 3)),
+        dims=["y", "x"],
+        coords={"lat": (("y", "x"), np.zeros((3, 3))), "lon": (("y", "x"), np.zeros((3, 3)))},
+    )
+    with pytest.raises(ValueError, match="regular"):
+        spatial.disk_mean(ds, 1.0, lat_key="lat", lon_key="lon")
