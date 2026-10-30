@@ -18,4 +18,7 @@ Typically this is done with an xarray representation of data and a geopandas rep
 
 from ._aggregate import mask, reduce
 
-__all__ = ["mask", "reduce"]
+# Port-only wrappers (float32 parity, float64 return); the clean versions are in ._neighbourhood
+from ._port_parity import disk_mean, fill_missing
+
+__all__ = ["disk_mean", "fill_missing", "mask", "reduce"]
